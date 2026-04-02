@@ -1,0 +1,201 @@
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	dependencies {
+		classpath 'de.undercouch:gradle-download-task:5.3.1'
+	}
+}
+
+plugins {
+	id "de.esoco.gwt" version "1.2.0"
+	id "org.sonarqube"
+}
+
+repositories {
+	mavenCentral()
+}
+
+configurations.all {
+	resolutionStrategy.dependencySubstitution {
+		substitute module('com.google.gwt:gwt-user') using module('org.gwtproject:gwt-user:2.11.0')
+		substitute module('com.google.gwt:gwt-dev') using module('org.gwtproject:gwt-dev:2.11.0')
+		substitute module('com.google.gwt:gwt-codeserver') using module('org.gwtproject:gwt-codeserver:2.11.0')
+	}
+}
+
+sonar {
+  properties {
+    property "sonar.projectKey", "optyfr_JRomManager-WebClient"
+    property "sonar.organization", "optyfr"
+    property "sonar.host.url", "https://sonarcloud.io"
+  }
+}
+
+apply plugin: 'java'
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+apply plugin: 'eclipse'
+
+eclipse {
+	classpath {
+		downloadJavadoc = true
+		downloadSources = true
+		containers 'com.gwtplugins.gwt.eclipse.core.GWT_CONTAINER',
+		           'org.eclipse.buildship.core.gradleclasspathcontainer'
+	//	defaultOutputDir = file('war/WEB-INF/classes')
+	}
+}
+
+apply plugin: 'de.undercouch.download'
+
+task downloadSmartGWT(type: Download) {
+	src([
+		'https://www.smartclient.com/builds/SmartGWT/13.0p/LGPL/latest/smartgwt.jar',
+		'https://www.smartclient.com/builds/SmartGWT/13.0p/LGPL/latest/smartgwt-skins.jar'
+	])
+	dest "$buildDir/SmartGWT"
+	onlyIfModified true
+}
+
+task SmartGWT {
+	dependsOn downloadSmartGWT
+	outputs.file "$buildDir/SmartGWT/smartgwt.jar" 
+}
+
+task SmartGWTSkins {
+	dependsOn downloadSmartGWT
+	outputs.file "$buildDir/SmartGWT/smartgwt-skins.jar" 
+}
+
+apply plugin: 'war'
+apply plugin: 'de.esoco.gwt'
+
+dependencies {
+	implementation files(SmartGWT)
+	implementation files(SmartGWTSkins)
+//	implementation group: 'com.sksamuel.gwt', name: 'gwt-websockets', version: '1.+'
+}
+
+sourceSets {
+	main {
+		java {
+			srcDirs = ["src/main/java"]
+		}
+	}
+}
+
+gwt {
+    module 'jrm.webui.Client'
+	/** GWT version */
+	gwtVersion = '2.11.0'
+	/** Add the gwt-servlet lib */
+	gwtServletLib = false
+	/** Add the gwt-elemental lib */
+	gwtElementalLib = false
+	/** Add Google plugin config (only if plugin 'eclipse' is enabled) */
+	gwtPluginEclipse = true//    minHeapSize = "512M"
+	compile {
+		/** The level of logging detail (ERROR, WARN, INFO, TRACE, 
+		 * DEBUG, SPAM, ALL) */
+		logLevel = "INFO"
+		/** Compile a report that tells the "Story of Your Compile". */
+		compileReport = false
+		/** Compile quickly with minimal optimizations. */
+		draftCompile = false
+		/** Include assert statements in compiled output. */
+		checkAssertions = false
+		/** Script output style. (OBF, PRETTY, DETAILED)*/
+		style = "OBF"
+		/** Sets the optimization level used by the compiler. 
+		 * 0=none 9=maximum. */
+		optimize = 9
+		/** Fail compilation if any input file contains an error. */
+		failOnError = false
+		/** Specifies Java source level. ("1.6", "1.7")*/
+		sourceLevel = "auto"
+		/** The number of local workers for compiling permutations. */
+		localWorkers = 4
+		/** The maximum memory to be used by local workers. */
+		localWorkersMem = 2048
+		/** Emit extra information allow chrome dev tools to display 
+		 * Java identifiers in many places instead of JavaScript functions.
+		 * (NONE, ONLY_METHOD_NAME, ABBREVIATED, FULL)*/
+		methodNameDisplayMode = "NONE"
+		/** Specifies JsInterop mode (NONE, JS, CLOSURE) */
+		//jsInteropMode = "JS"
+		/** Generate and export JsInterop (since GWT 2.8) */
+		generateJsInteropExports = true
+
+		/** shown all compile errors */
+        strict = false
+
+		war = "$buildDir/gwt/release"
+
+		/** Java args */
+		javaArgs=["-Dfile.encoding": 'UTF-8']
+		maxHeapSize="1024m"
+		minHeapSize="512m"
+//		maxPermSize="128m"
+	}
+}
+
+gwtCompile {
+	doFirst {
+		delete {
+			delete "$buildDir/gwt/release"
+		}
+	}
+}
+
+war
+{
+	duplicatesStrategy 'exclude'
+	from "war"
+	rootSpec.exclude("**/jrm")
+	rootSpec.exclude("**/*.jar")
+	archiveBaseName = "release"
+	archiveVersion = null
+	doFirst {
+		delete {
+			delete "war/smartgwt"
+		}
+		copy {
+			from "$buildDir/gwt/release"
+			into "war"
+		}
+	}
+}
+
+jar {
+	dependsOn gwtCompile
+	exclude '/jrm'
+	from ("$buildDir/gwt/release") {
+		into('webclient')
+	}
+	from ("$projectDir/war/index.html") {
+		into('webclient')
+	}
+	from ("$projectDir/certs") {
+		into('certs')
+	}
+}
+
+build.dependsOn jar
+
+
+task webZip(type: Zip, dependsOn: gwtCompile) {
+	from ("$buildDir/gwt/out/smartgwt")
+	into "webclient"
+	archiveBaseName = 'release'
+	archiveFileName = "release.zip"
+	destinationDirectory = file("$buildDir/distributions")
+}
+
+build.dependsOn webZip
+
+war {
+	archiveBaseName = 'release'
+}
