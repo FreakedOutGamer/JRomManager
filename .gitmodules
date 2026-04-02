@@ -1,4 +1,4 @@
 [submodule "WebClient"]
 	path = WebClient
-	url = https://github.com/optyfr/JRomManager-WebClient
+	url = https://github.com/FreakedOutGamer/JRomManager-WebClient
 	branch = master
